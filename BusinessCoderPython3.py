@@ -1,3 +1,22 @@
+"""
+Business Coder appends a Melissa Address Key (MAK) and other identifiers to a business
+record based on its name and address, letting you link and de-duplicate business data
+across systems.
+
+High-level flow of this sample:
+  1. ARGS    - main reads any --flag values off the command line with argparse.
+  2. INPUT   - call_api fills in whatever wasn't supplied via interactive prompts.
+  3. REQUEST - call_api builds the REST query string (license + input fields).
+  4. CALL    - get_contents issues the GET request and pretty-prints the JSON response.
+
+This sample is a thin HTTP client: it builds a query string, sends a GET request to
+the Business Coder Cloud API, and prints the JSON response.
+
+Reference:
+  - Documentation: https://docs.melissa.com/cloud-api/business-coder/business-coder-index.html
+  - Release notes: https://releasenotes.melissa.com/cloud-api/business-coder/
+  - Result codes:  https://docs.melissa.com/melissa/result-codes/result-codes-index.html
+"""
 
 import json
 import requests
@@ -5,6 +24,14 @@ import argparse
 import urllib.parse
 
 def main():
+  """
+  Entry point. Reads the optional command-line arguments, then hands control to
+  call_api, which performs the actual request/response cycle.
+
+  Recognized flags (each followed by its value, e.g. --company "Melissa"):
+  --license/-l, --company, --addressline1, --city, --state, --postalcode, --country.
+  Any flag not supplied is None, and call_api prompts for it interactively.
+  """
   base_service_url = "https://businesscoder.melissadata.net/"
   service_endpoint = "WEB/BusinessCoder/doBusinessCoderUS"; #please see https://www.melissa.com/developer/business-coder for more endpoints
 
@@ -32,11 +59,22 @@ def main():
   postalcode = args.postalcode
   country = args.country
 
+  # Run the lookup with whatever values were passed on the command line.
   call_api(base_service_url, service_endpoint, license, company, addressline1, city, state, postalcode, country)
 
 def get_contents(base_service_url, request_query):
+    """
+    Issues the GET request against the Business Coder endpoint and pretty-prints
+    the API call and the JSON response to the console.
+
+    Args:
+        base_service_url: The Business Coder Cloud API base URL.
+        request_query: The endpoint path plus query string built by call_api.
+    """
     url = urllib.parse.urljoin(base_service_url, request_query)
     response = requests.get(url)
+
+    # Re-serialize with indentation so the raw response is easier to read.
     obj = json.loads(response.text)
     pretty_response = json.dumps(obj, indent=4)
 
@@ -52,6 +90,25 @@ def get_contents(base_service_url, request_query):
     print(pretty_response)
 
 def call_api(base_service_url, service_endpoint, license, company, addressline1, city, state, postalcode, country):
+    """
+    Drives the interactive/CLI loop: gathers the required lookup fields, builds and
+    submits the REST query, prints the result, and optionally repeats for another record.
+
+    It runs a single pass and exits only when every lookup field was supplied on the
+    command line. Otherwise it loops, asking for a new record each pass until the user
+    answers "N".
+
+    Args:
+        base_service_url: The Business Coder Cloud API base URL.
+        service_endpoint: The specific Business Coder endpoint path to call.
+        license: The Melissa license string sent with every request.
+        company: A company name to test, or None to prompt for it.
+        addressline1: A street address to test, or None to prompt for it.
+        city: A city to test, or None to prompt for it.
+        state: A state to test, or None to prompt for it.
+        postalcode: A postal code to test, or None to prompt for it.
+        country: A country to test, or None to prompt for it.
+    """
     print("\n================ WELCOME TO MELISSA BUSINESS CODER CLOUD API ===============\n")
 
     should_continue_running = True
@@ -62,6 +119,9 @@ def call_api(base_service_url, service_endpoint, license, company, addressline1,
         input_state = ""
         input_postalcode = ""
         input_country = ""
+
+        # No address values were supplied via command line, so prompt for every field.
+        # (The company name alone does not count here.)
         if not addressline1 and not city and not state and not postalcode and not country:
             print("\nFill in each value to see results")
             input_company = input("Company: ")
@@ -71,6 +131,7 @@ def call_api(base_service_url, service_endpoint, license, company, addressline1,
             input_postalcode = input("Postal: ")
             input_country = input("Country: ")
         else:
+            # At least one address field was supplied via command line; use those values as-is.
             input_company = company
             input_addressline1 = addressline1
             input_city = city
@@ -78,6 +139,7 @@ def call_api(base_service_url, service_endpoint, license, company, addressline1,
             input_postalcode = postalcode
             input_country = country
 
+        # Prompt individually for any still-missing required field.
         while not input_company or not input_addressline1 or not input_city or not input_state or not input_postalcode or not input_country:
             print("\nFill in each value to see results")
             if not input_company:
@@ -93,6 +155,8 @@ def call_api(base_service_url, service_endpoint, license, company, addressline1,
             if not input_country:
                 input_country = input("\nCountry: ")
 
+        # Map input fields to the API's expected query parameter names and
+        # request a JSON response.
         inputs = {
             "format": "json",
             "comp": input_company,
@@ -140,6 +204,8 @@ def call_api(base_service_url, service_endpoint, license, company, addressline1,
 
         is_valid = False;
 
+        # If every lookup field came from the command line, treat this as a one-shot
+        # run rather than looping for additional records.
         if (company is not None) and (addressline1 is not None) and (city is not None) and (state is not None) and (postalcode is not None) and (country is not None):
             address = company + addressline1 + city + state + postalcode + country
         else:
@@ -150,6 +216,8 @@ def call_api(base_service_url, service_endpoint, license, company, addressline1,
             should_continue_running = False
 
 
+        # Otherwise ask whether to test another record. Keep prompting until we get a
+        # valid Y/N. "N" ends the program; "Y" falls through to another pass.
         while not is_valid:
             test_another_response = input("\nTest another record? (Y/N)")
             if test_another_response != '':
